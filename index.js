@@ -6,6 +6,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || '';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 const INSTANCE_NAME = process.env.INSTANCE_NAME || 'Betânia';
+const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://betania-bot.onrender.com/webhook';
 const PORT = process.env.PORT || 3000;
 
 const SYSTEM_PROMPT = `Você é o assistente virtual oficial da Igreja Betânia, uma igreja evangélica brasileira pastoreada pelo Pr. Melqui, com mais de 30 anos de ministério.
@@ -32,6 +33,29 @@ INSTRUÇÕES:
 
 const conversationHistory = {};
 
+// Configura o webhook automaticamente na Evolution API
+async function setupWebhook() {
+  try {
+    console.log('🔧 Configurando webhook na Evolution API...');
+    const response = await fetch(`${EVOLUTION_API_URL}/webhook/set/${INSTANCE_NAME}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': EVOLUTION_API_KEY
+      },
+      body: JSON.stringify({
+        url: WEBHOOK_URL,
+        enabled: true,
+        events: ['MESSAGES_UPSERT', 'messages.upsert', 'MESSAGE_RECEIVED']
+      })
+    });
+    const data = await response.json();
+    console.log('✅ Webhook configurado:', JSON.stringify(data));
+  } catch (err) {
+    console.error('⚠️ Erro ao configurar webhook:', err.message);
+  }
+}
+
 async function sendWhatsAppMessage(to, message) {
   try {
     const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`, {
@@ -43,10 +67,10 @@ async function sendWhatsAppMessage(to, message) {
       body: JSON.stringify({ number: to, text: message })
     });
     const data = await response.json();
-    console.log('📤 Mensagem enviada:', JSON.stringify(data));
+    console.log('📤 Enviado:', JSON.stringify(data).substring(0, 100));
     return data;
   } catch (err) {
-    console.error('Erro ao enviar mensagem:', err);
+    console.error('❌ Erro ao enviar:', err.message);
   }
 }
 
@@ -82,71 +106,62 @@ async function getAIResponse(phoneNumber, userMessage) {
   return reply;
 }
 
-// Webhook — aceita QUALQUER evento e tenta extrair a mensagem
+// Webhook — aceita todos os formatos
 app.post('/webhook', async (req, res) => {
   res.status(200).send('OK');
 
   try {
     const body = req.body;
-    console.log('📨 Webhook recebido:', JSON.stringify(body).substring(0, 300));
+    console.log('📨 Webhook:', JSON.stringify(body).substring(0, 400));
 
-    // Extrair mensagem de diferentes formatos da Evolution API
     let from = null;
     let text = null;
     let fromMe = false;
 
-    // Formato 1: messages.upsert
     if (body.data?.messages?.[0]) {
       const msg = body.data.messages[0];
       fromMe = msg.key?.fromMe;
       from = msg.key?.remoteJid;
-      text = msg.message?.conversation ||
-             msg.message?.extendedTextMessage?.text ||
-             msg.message?.imageMessage?.caption;
+      text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
     }
 
-    // Formato 2: direto no data
     if (!text && body.data?.key) {
       fromMe = body.data.key?.fromMe;
       from = body.data.key?.remoteJid;
-      text = body.data.message?.conversation ||
-             body.data.message?.extendedTextMessage?.text;
+      text = body.data.message?.conversation || body.data.message?.extendedTextMessage?.text;
     }
 
-    // Formato 3: array de mensagens
     if (!text && Array.isArray(body.messages)) {
       const msg = body.messages[0];
       fromMe = msg?.key?.fromMe;
       from = msg?.key?.remoteJid;
-      text = msg?.message?.conversation ||
-             msg?.message?.extendedTextMessage?.text;
+      text = msg?.message?.conversation || msg?.message?.extendedTextMessage?.text;
     }
 
-    if (fromMe) { console.log('⏭️ Mensagem própria ignorada'); return; }
-    if (from?.includes('@g.us')) { console.log('⏭️ Grupo ignorado'); return; }
-    if (!from || !text) { console.log('⏭️ Sem texto/remetente'); return; }
+    if (fromMe) return;
+    if (from?.includes('@g.us')) return;
+    if (!from || !text) return;
 
     console.log(`📩 De: ${from} | Texto: ${text}`);
-
     const reply = await getAIResponse(from, text);
     await sendWhatsAppMessage(from, reply);
-    console.log(`✅ Respondido para ${from}`);
+    console.log(`✅ Respondido!`);
 
   } catch (error) {
-    console.error('❌ Erro no webhook:', error);
+    console.error('❌ Erro:', error.message);
   }
 });
 
-// Rota raiz
 app.get('/', (req, res) => {
-  res.json({ status: 'online', service: 'Betânia Bot', message: 'Agente IA da Igreja Betânia funcionando!' });
+  res.json({ status: 'online', service: 'Betânia Bot' });
 });
 
-// Rota de health check para manter o Render acordado
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🤖 Betânia Bot rodando na porta ${PORT}`);
+  // Aguarda 3 segundos e configura o webhook automaticamente
+  setTimeout(setupWebhook, 3000);
 });
