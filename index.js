@@ -33,10 +33,9 @@ INSTRUÇÕES:
 
 const conversationHistory = {};
 
-// Configura o webhook automaticamente na Evolution API
 async function setupWebhook() {
   try {
-    console.log('🔧 Configurando webhook na Evolution API...');
+    console.log('🔧 Configurando webhook...');
     const response = await fetch(`${EVOLUTION_API_URL}/webhook/set/${INSTANCE_NAME}`, {
       method: 'POST',
       headers: {
@@ -46,13 +45,13 @@ async function setupWebhook() {
       body: JSON.stringify({
         url: WEBHOOK_URL,
         enabled: true,
-        events: ['MESSAGES_UPSERT', 'messages.upsert', 'MESSAGE_RECEIVED']
+        events: ['MESSAGES_UPSERT']
       })
     });
     const data = await response.json();
-    console.log('✅ Webhook configurado:', JSON.stringify(data));
+    console.log('✅ Webhook:', JSON.stringify(data));
   } catch (err) {
-    console.error('⚠️ Erro ao configurar webhook:', err.message);
+    console.error('⚠️ Erro webhook:', err.message);
   }
 }
 
@@ -67,10 +66,10 @@ async function sendWhatsAppMessage(to, message) {
       body: JSON.stringify({ number: to, text: message })
     });
     const data = await response.json();
-    console.log('📤 Enviado:', JSON.stringify(data).substring(0, 100));
+    console.log('📤 Enviado:', JSON.stringify(data).substring(0, 150));
     return data;
   } catch (err) {
-    console.error('❌ Erro ao enviar:', err.message);
+    console.error('❌ Erro envio:', err.message);
   }
 }
 
@@ -78,13 +77,10 @@ async function getAIResponse(phoneNumber, userMessage) {
   if (!conversationHistory[phoneNumber]) {
     conversationHistory[phoneNumber] = [];
   }
-
   conversationHistory[phoneNumber].push({ role: 'user', content: userMessage });
-
   if (conversationHistory[phoneNumber].length > 20) {
     conversationHistory[phoneNumber] = conversationHistory[phoneNumber].slice(-20);
   }
-
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -99,20 +95,24 @@ async function getAIResponse(phoneNumber, userMessage) {
       messages: conversationHistory[phoneNumber]
     })
   });
-
   const data = await response.json();
   const reply = data.content?.[0]?.text || 'Desculpe, tente novamente.';
   conversationHistory[phoneNumber].push({ role: 'assistant', content: reply });
   return reply;
 }
 
-// Webhook — aceita todos os formatos
+// GET /webhook — responde à validação da Evolution API
+app.get('/webhook', (req, res) => {
+  console.log('✅ Validação GET do webhook recebida');
+  res.status(200).json({ status: 'ok', message: 'Betânia Bot webhook ativo' });
+});
+
+// POST /webhook — recebe mensagens
 app.post('/webhook', async (req, res) => {
   res.status(200).send('OK');
-
   try {
     const body = req.body;
-    console.log('📨 Webhook:', JSON.stringify(body).substring(0, 400));
+    console.log('📨 Webhook POST:', JSON.stringify(body).substring(0, 400));
 
     let from = null;
     let text = null;
@@ -124,13 +124,11 @@ app.post('/webhook', async (req, res) => {
       from = msg.key?.remoteJid;
       text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
     }
-
     if (!text && body.data?.key) {
       fromMe = body.data.key?.fromMe;
       from = body.data.key?.remoteJid;
       text = body.data.message?.conversation || body.data.message?.extendedTextMessage?.text;
     }
-
     if (!text && Array.isArray(body.messages)) {
       const msg = body.messages[0];
       fromMe = msg?.key?.fromMe;
@@ -145,8 +143,7 @@ app.post('/webhook', async (req, res) => {
     console.log(`📩 De: ${from} | Texto: ${text}`);
     const reply = await getAIResponse(from, text);
     await sendWhatsAppMessage(from, reply);
-    console.log(`✅ Respondido!`);
-
+    console.log('✅ Respondido!');
   } catch (error) {
     console.error('❌ Erro:', error.message);
   }
@@ -162,6 +159,5 @@ app.get('/health', (req, res) => {
 
 app.listen(PORT, async () => {
   console.log(`🤖 Betânia Bot rodando na porta ${PORT}`);
-  // Aguarda 3 segundos e configura o webhook automaticamente
   setTimeout(setupWebhook, 3000);
 });
