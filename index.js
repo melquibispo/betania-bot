@@ -5,7 +5,7 @@ app.use(express.json());
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || '';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-const INSTANCE_NAME = process.env.INSTANCE_NAME || 'betania';
+const INSTANCE_NAME = process.env.INSTANCE_NAME || 'Betânia';
 const PORT = process.env.PORT || 3000;
 
 const SYSTEM_PROMPT = `Você é o assistente virtual oficial da Igreja Betânia, uma igreja evangélica brasileira pastoreada pelo Pr. Melqui, com mais de 30 anos de ministério.
@@ -30,22 +30,24 @@ INSTRUÇÕES:
 - Sempre termine convidando para continuar ajudando
 - Não responda mensagens de grupos, apenas conversas individuais`;
 
-// Histórico de conversas por número
 const conversationHistory = {};
 
 async function sendWhatsAppMessage(to, message) {
-  const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': EVOLUTION_API_KEY
-    },
-    body: JSON.stringify({
-      number: to,
-      text: message
-    })
-  });
-  return response.json();
+  try {
+    const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': EVOLUTION_API_KEY
+      },
+      body: JSON.stringify({ number: to, text: message })
+    });
+    const data = await response.json();
+    console.log('📤 Mensagem enviada:', JSON.stringify(data));
+    return data;
+  } catch (err) {
+    console.error('Erro ao enviar mensagem:', err);
+  }
 }
 
 async function getAIResponse(phoneNumber, userMessage) {
@@ -53,12 +55,8 @@ async function getAIResponse(phoneNumber, userMessage) {
     conversationHistory[phoneNumber] = [];
   }
 
-  conversationHistory[phoneNumber].push({
-    role: 'user',
-    content: userMessage
-  });
+  conversationHistory[phoneNumber].push({ role: 'user', content: userMessage });
 
-  // Manter apenas as últimas 10 mensagens por conversa
   if (conversationHistory[phoneNumber].length > 20) {
     conversationHistory[phoneNumber] = conversationHistory[phoneNumber].slice(-20);
   }
@@ -79,61 +77,74 @@ async function getAIResponse(phoneNumber, userMessage) {
   });
 
   const data = await response.json();
-  const reply = data.content?.[0]?.text || 'Desculpe, não consegui processar sua mensagem. Tente novamente.';
-
-  conversationHistory[phoneNumber].push({
-    role: 'assistant',
-    content: reply
-  });
-
+  const reply = data.content?.[0]?.text || 'Desculpe, tente novamente.';
+  conversationHistory[phoneNumber].push({ role: 'assistant', content: reply });
   return reply;
 }
 
-// Webhook que recebe mensagens do WhatsApp
+// Webhook — aceita QUALQUER evento e tenta extrair a mensagem
 app.post('/webhook', async (req, res) => {
   res.status(200).send('OK');
 
   try {
     const body = req.body;
+    console.log('📨 Webhook recebido:', JSON.stringify(body).substring(0, 300));
 
-    // Ignorar mensagens que não sejam do tipo correto
-    if (body.event !== 'messages.upsert') return;
+    // Extrair mensagem de diferentes formatos da Evolution API
+    let from = null;
+    let text = null;
+    let fromMe = false;
 
-    const message = body.data?.messages?.[0] || body.data;
-    if (!message) return;
+    // Formato 1: messages.upsert
+    if (body.data?.messages?.[0]) {
+      const msg = body.data.messages[0];
+      fromMe = msg.key?.fromMe;
+      from = msg.key?.remoteJid;
+      text = msg.message?.conversation ||
+             msg.message?.extendedTextMessage?.text ||
+             msg.message?.imageMessage?.caption;
+    }
 
-    // Ignorar mensagens enviadas pelo próprio bot
-    if (message.key?.fromMe) return;
+    // Formato 2: direto no data
+    if (!text && body.data?.key) {
+      fromMe = body.data.key?.fromMe;
+      from = body.data.key?.remoteJid;
+      text = body.data.message?.conversation ||
+             body.data.message?.extendedTextMessage?.text;
+    }
 
-    // Ignorar mensagens de grupos
-    if (message.key?.remoteJid?.includes('@g.us')) return;
+    // Formato 3: array de mensagens
+    if (!text && Array.isArray(body.messages)) {
+      const msg = body.messages[0];
+      fromMe = msg?.key?.fromMe;
+      from = msg?.key?.remoteJid;
+      text = msg?.message?.conversation ||
+             msg?.message?.extendedTextMessage?.text;
+    }
 
-    const from = message.key?.remoteJid;
-    const text = message.message?.conversation ||
-                 message.message?.extendedTextMessage?.text ||
-                 message.message?.imageMessage?.caption;
+    if (fromMe) { console.log('⏭️ Mensagem própria ignorada'); return; }
+    if (from?.includes('@g.us')) { console.log('⏭️ Grupo ignorado'); return; }
+    if (!from || !text) { console.log('⏭️ Sem texto/remetente'); return; }
 
-    if (!from || !text) return;
-
-    console.log(`📩 Mensagem de ${from}: ${text}`);
+    console.log(`📩 De: ${from} | Texto: ${text}`);
 
     const reply = await getAIResponse(from, text);
     await sendWhatsAppMessage(from, reply);
-
-    console.log(`✅ Resposta enviada para ${from}`);
+    console.log(`✅ Respondido para ${from}`);
 
   } catch (error) {
-    console.error('Erro no webhook:', error);
+    console.error('❌ Erro no webhook:', error);
   }
 });
 
-// Rota de verificação
+// Rota raiz
 app.get('/', (req, res) => {
-  res.json({
-    status: 'online',
-    service: 'Betânia Bot',
-    message: 'Agente IA da Igreja Betânia funcionando!'
-  });
+  res.json({ status: 'online', service: 'Betânia Bot', message: 'Agente IA da Igreja Betânia funcionando!' });
+});
+
+// Rota de health check para manter o Render acordado
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
 });
 
 app.listen(PORT, () => {
