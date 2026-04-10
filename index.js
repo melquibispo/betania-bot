@@ -1,13 +1,13 @@
 const express = require('express');
 const app = express();
 
-// Aumentar limite para aceitar payloads grandes da Evolution API
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || '';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
+const EVOLUTION_INSTANCE_TOKEN = process.env.EVOLUTION_INSTANCE_TOKEN || '';
 const INSTANCE_NAME = process.env.INSTANCE_NAME || 'betania';
 const PORT = process.env.PORT || 3000;
 
@@ -36,20 +36,32 @@ INSTRUÇÕES:
 const conversationHistory = {};
 
 async function sendWhatsAppMessage(to, message) {
-  try {
-    const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': EVOLUTION_API_KEY
-      },
-      body: JSON.stringify({ number: to, text: message })
-    });
-    const data = await response.json();
-    console.log('📤 Enviado:', JSON.stringify(data).substring(0, 150));
-    return data;
-  } catch (err) {
-    console.error('❌ Erro envio:', err.message);
+  // Tenta com token da instância primeiro, depois com apikey global
+  const keys = [EVOLUTION_INSTANCE_TOKEN, EVOLUTION_API_KEY].filter(Boolean);
+  
+  for (const key of keys) {
+    try {
+      console.log(`📤 Tentando enviar com chave: ${key.substring(0, 8)}...`);
+      const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': key
+        },
+        body: JSON.stringify({ number: to, text: message })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Mensagem enviada com sucesso!');
+        return data;
+      } else {
+        const err = await response.text();
+        console.log(`⚠️ Falhou com status ${response.status}: ${err.substring(0, 100)}`);
+      }
+    } catch (err) {
+      console.error(`❌ Erro com chave ${key.substring(0, 8)}: ${err.message}`);
+    }
   }
 }
 
@@ -81,12 +93,10 @@ async function getAIResponse(phoneNumber, userMessage) {
   return reply;
 }
 
-// GET /webhook — validação
 app.get('/webhook', (req, res) => {
   res.status(200).json({ status: 'ok', message: 'Betânia Bot webhook ativo' });
 });
 
-// POST /webhook — recebe mensagens
 app.post('/webhook', async (req, res) => {
   res.status(200).send('OK');
   try {
@@ -122,7 +132,6 @@ app.post('/webhook', async (req, res) => {
     console.log(`📩 De: ${from} | Texto: ${text}`);
     const reply = await getAIResponse(from, text);
     await sendWhatsAppMessage(from, reply);
-    console.log('✅ Respondido!');
   } catch (error) {
     console.error('❌ Erro:', error.message);
   }
