@@ -1,12 +1,14 @@
 const express = require('express');
 const app = express();
-app.use(express.json());
+
+// Aumentar limite para aceitar payloads grandes da Evolution API
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || '';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-const INSTANCE_NAME = process.env.INSTANCE_NAME || 'Betânia';
-const WEBHOOK_URL = process.env.WEBHOOK_URL || 'https://betania-bot.onrender.com/webhook';
+const INSTANCE_NAME = process.env.INSTANCE_NAME || 'betania';
 const PORT = process.env.PORT || 3000;
 
 const SYSTEM_PROMPT = `Você é o assistente virtual oficial da Igreja Betânia, uma igreja evangélica brasileira pastoreada pelo Pr. Melqui, com mais de 30 anos de ministério.
@@ -32,28 +34,6 @@ INSTRUÇÕES:
 - Não responda mensagens de grupos, apenas conversas individuais`;
 
 const conversationHistory = {};
-
-async function setupWebhook() {
-  try {
-    console.log('🔧 Configurando webhook...');
-    const response = await fetch(`${EVOLUTION_API_URL}/webhook/set/${INSTANCE_NAME}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': EVOLUTION_API_KEY
-      },
-      body: JSON.stringify({
-        url: WEBHOOK_URL,
-        enabled: true,
-        events: ['MESSAGES_UPSERT']
-      })
-    });
-    const data = await response.json();
-    console.log('✅ Webhook:', JSON.stringify(data));
-  } catch (err) {
-    console.error('⚠️ Erro webhook:', err.message);
-  }
-}
 
 async function sendWhatsAppMessage(to, message) {
   try {
@@ -101,9 +81,8 @@ async function getAIResponse(phoneNumber, userMessage) {
   return reply;
 }
 
-// GET /webhook — responde à validação da Evolution API
+// GET /webhook — validação
 app.get('/webhook', (req, res) => {
-  console.log('✅ Validação GET do webhook recebida');
   res.status(200).json({ status: 'ok', message: 'Betânia Bot webhook ativo' });
 });
 
@@ -112,7 +91,7 @@ app.post('/webhook', async (req, res) => {
   res.status(200).send('OK');
   try {
     const body = req.body;
-    console.log('📨 Webhook POST:', JSON.stringify(body).substring(0, 400));
+    console.log('📨 Evento:', body.event || 'desconhecido');
 
     let from = null;
     let text = null;
@@ -157,7 +136,6 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`🤖 Betânia Bot rodando na porta ${PORT}`);
-  setTimeout(setupWebhook, 3000);
 });
