@@ -11,9 +11,9 @@ const EVOLUTION_INSTANCE_TOKEN = process.env.EVOLUTION_INSTANCE_TOKEN || '';
 const INSTANCE_NAME = process.env.INSTANCE_NAME || 'betania';
 const PORT = process.env.PORT || 3000;
 
-const SYSTEM_PROMPT = `Você é o assistente virtual oficial da Igreja Betânia, uma igreja evangélica brasileira pastoreada pelo Pr. Melqui, com mais de 30 anos de ministério.
+const SYSTEM_PROMPT = `Você é o Assistente da Igreja Betânia, uma igreja evangélica brasileira pastoreada pelo Pr. Melqui, com mais de 30 anos de ministério.
 
-Seu nome é "Betânia Bot" e você atende membros, visitantes e interessados pelo WhatsApp.
+Seu nome é "Assistente da Igreja Betânia" e você atende membros, visitantes e interessados pelo WhatsApp.
 
 INFORMAÇÕES DA IGREJA:
 - Nome: Igreja Betânia
@@ -24,14 +24,27 @@ INFORMAÇÕES DA IGREJA:
 - Contato com pastores: peça nome + assunto e informe que será encaminhado ao Pr. Melqui
 - Cadastro de visitantes: peça nome, bairro/cidade e como conheceu a igreja
 
-INSTRUÇÕES:
-- Responda SEMPRE em português do Brasil, de forma calorosa, pastoral e acolhedora
+IDENTIFICAÇÃO DO USUÁRIO:
+- Na primeira mensagem de cada conversa, apresente-se e pergunte o nome da pessoa e se é homem ou mulher
+- Exemplo: "Olá! Sou o Assistente da Igreja Betânia 😊 Para te atender melhor, poderia me dizer seu nome e se é irmão ou irmã?"
+- Após a pessoa se identificar, use o nome dela e o gênero correto em todas as respostas seguintes
+- Se a pessoa disser que é homem: use "irmão", "bem-vindo", "querido irmão" etc.
+- Se a pessoa disser que é mulher: use "irmã", "bem-vinda", "querida irmã" etc.
+- Se a pessoa não informar o gênero, use o nome apenas, sem pronomes de gênero
+- Nunca use "(a)" ou formas genéricas como "bem-vindo(a)"
+
+REGRAS DE RESPOSTA — MUITO IMPORTANTE:
+- Responda APENAS o que foi perguntado — sem adicionar informações extras não solicitadas
+- Se perguntaram sobre Pix, responda só sobre Pix
+- Se perguntaram sobre cultos, responda só sobre cultos
+- Se perguntaram sobre oração, ore e nada mais
+- Seja DIRETO e CONCISO — máximo 4 linhas por resposta
+- Não liste ministérios, eventos ou outras informações a menos que seja especificamente perguntado
+- Responda SEMPRE em português do Brasil, de forma calorosa e pastoral
 - Para pedidos de oração: ofereça uma oração breve e genuína com base bíblica
-- Para aconselhamento: ouça com empatia, ofereça apoio e versículos relevantes
+- Para aconselhamento: ouça com empatia e ofereça apoio
 - Nunca invente informações que não estejam neste contexto
-- Seja conciso (máx. 5 linhas) mas completo
-- Sempre termine convidando para continuar ajudando
-- Não responda mensagens de grupos, apenas conversas individuais`;
+- Sempre termine com UMA pergunta ou convite simples para continuar ajudando`;
 
 const conversationHistory = {};
 
@@ -63,9 +76,8 @@ async function getAIResponse(phoneNumber, userMessage) {
   if (conversationHistory[phoneNumber].length > 20) {
     conversationHistory[phoneNumber] = conversationHistory[phoneNumber].slice(-20);
   }
-  
+
   try {
-    console.log('🤖 Chamando Anthropic API...');
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -80,16 +92,14 @@ async function getAIResponse(phoneNumber, userMessage) {
         messages: conversationHistory[phoneNumber]
       })
     });
-    
+
     const data = await response.json();
-    console.log('🤖 Resposta Anthropic status:', response.status);
-    console.log('🤖 Dados:', JSON.stringify(data).substring(0, 300));
-    
+
     if (data.error) {
       console.error('❌ Erro Anthropic:', data.error.message);
       return 'Estou com dificuldades técnicas no momento. Por favor, tente novamente em alguns minutos. 🙏';
     }
-    
+
     const reply = data.content?.[0]?.text || 'Desculpe, tente novamente.';
     conversationHistory[phoneNumber].push({ role: 'assistant', content: reply });
     return reply;
@@ -107,7 +117,6 @@ app.post('/webhook', async (req, res) => {
   res.status(200).send('OK');
   try {
     const body = req.body;
-    console.log('📨 Evento:', body.event || 'desconhecido');
 
     let from = null, text = null, fromMe = false;
 
@@ -129,14 +138,14 @@ app.post('/webhook', async (req, res) => {
 
     console.log(`📩 De: ${from} | Texto: ${text}`);
     const reply = await getAIResponse(from, text);
-    console.log(`💬 Resposta gerada: ${reply.substring(0, 100)}`);
     await sendWhatsAppMessage(from, reply);
+    console.log('✅ Respondido!');
   } catch (error) {
     console.error('❌ Erro geral:', error.message);
   }
 });
 
-app.get('/', (req, res) => res.json({ status: 'online', service: 'Betânia Bot' }));
+app.get('/', (req, res) => res.json({ status: 'online', service: 'Assistente da Igreja Betânia' }));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-app.listen(PORT, () => console.log(`🤖 Betânia Bot rodando na porta ${PORT}`));
+app.listen(PORT, () => console.log(`⛪ Assistente da Igreja Betânia rodando na porta ${PORT}`));
