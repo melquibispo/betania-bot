@@ -36,65 +36,71 @@ INSTRUÇÕES:
 const conversationHistory = {};
 
 async function sendWhatsAppMessage(to, message) {
-  // Tenta com token da instância primeiro, depois com apikey global
   const keys = [EVOLUTION_INSTANCE_TOKEN, EVOLUTION_API_KEY].filter(Boolean);
-  
   for (const key of keys) {
     try {
-      console.log(`📤 Tentando enviar com chave: ${key.substring(0, 8)}...`);
       const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': key
-        },
+        headers: { 'Content-Type': 'application/json', 'apikey': key },
         body: JSON.stringify({ number: to, text: message })
       });
-      
       if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Mensagem enviada com sucesso!');
-        return data;
+        console.log('✅ Mensagem enviada!');
+        return await response.json();
       } else {
         const err = await response.text();
-        console.log(`⚠️ Falhou com status ${response.status}: ${err.substring(0, 100)}`);
+        console.log(`⚠️ Status ${response.status}: ${err.substring(0, 150)}`);
       }
     } catch (err) {
-      console.error(`❌ Erro com chave ${key.substring(0, 8)}: ${err.message}`);
+      console.error(`❌ Erro envio: ${err.message}`);
     }
   }
 }
 
 async function getAIResponse(phoneNumber, userMessage) {
-  if (!conversationHistory[phoneNumber]) {
-    conversationHistory[phoneNumber] = [];
-  }
+  if (!conversationHistory[phoneNumber]) conversationHistory[phoneNumber] = [];
   conversationHistory[phoneNumber].push({ role: 'user', content: userMessage });
   if (conversationHistory[phoneNumber].length > 20) {
     conversationHistory[phoneNumber] = conversationHistory[phoneNumber].slice(-20);
   }
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      system: SYSTEM_PROMPT,
-      messages: conversationHistory[phoneNumber]
-    })
-  });
-  const data = await response.json();
-  const reply = data.content?.[0]?.text || 'Desculpe, tente novamente.';
-  conversationHistory[phoneNumber].push({ role: 'assistant', content: reply });
-  return reply;
+  
+  try {
+    console.log('🤖 Chamando Anthropic API...');
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: SYSTEM_PROMPT,
+        messages: conversationHistory[phoneNumber]
+      })
+    });
+    
+    const data = await response.json();
+    console.log('🤖 Resposta Anthropic status:', response.status);
+    console.log('🤖 Dados:', JSON.stringify(data).substring(0, 300));
+    
+    if (data.error) {
+      console.error('❌ Erro Anthropic:', data.error.message);
+      return 'Estou com dificuldades técnicas no momento. Por favor, tente novamente em alguns minutos. 🙏';
+    }
+    
+    const reply = data.content?.[0]?.text || 'Desculpe, tente novamente.';
+    conversationHistory[phoneNumber].push({ role: 'assistant', content: reply });
+    return reply;
+  } catch (err) {
+    console.error('❌ Erro chamada Anthropic:', err.message);
+    return 'Estou com dificuldades técnicas no momento. Por favor, tente novamente em alguns minutos. 🙏';
+  }
 }
 
 app.get('/webhook', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'Betânia Bot webhook ativo' });
+  res.status(200).json({ status: 'ok' });
 });
 
 app.post('/webhook', async (req, res) => {
@@ -103,9 +109,7 @@ app.post('/webhook', async (req, res) => {
     const body = req.body;
     console.log('📨 Evento:', body.event || 'desconhecido');
 
-    let from = null;
-    let text = null;
-    let fromMe = false;
+    let from = null, text = null, fromMe = false;
 
     if (body.data?.messages?.[0]) {
       const msg = body.data.messages[0];
@@ -118,12 +122,6 @@ app.post('/webhook', async (req, res) => {
       from = body.data.key?.remoteJid;
       text = body.data.message?.conversation || body.data.message?.extendedTextMessage?.text;
     }
-    if (!text && Array.isArray(body.messages)) {
-      const msg = body.messages[0];
-      fromMe = msg?.key?.fromMe;
-      from = msg?.key?.remoteJid;
-      text = msg?.message?.conversation || msg?.message?.extendedTextMessage?.text;
-    }
 
     if (fromMe) return;
     if (from?.includes('@g.us')) return;
@@ -131,20 +129,14 @@ app.post('/webhook', async (req, res) => {
 
     console.log(`📩 De: ${from} | Texto: ${text}`);
     const reply = await getAIResponse(from, text);
+    console.log(`💬 Resposta gerada: ${reply.substring(0, 100)}`);
     await sendWhatsAppMessage(from, reply);
   } catch (error) {
-    console.error('❌ Erro:', error.message);
+    console.error('❌ Erro geral:', error.message);
   }
 });
 
-app.get('/', (req, res) => {
-  res.json({ status: 'online', service: 'Betânia Bot' });
-});
+app.get('/', (req, res) => res.json({ status: 'online', service: 'Betânia Bot' }));
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
-});
-
-app.listen(PORT, () => {
-  console.log(`🤖 Betânia Bot rodando na porta ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🤖 Betânia Bot rodando na porta ${PORT}`));
