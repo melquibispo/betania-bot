@@ -1,90 +1,180 @@
+// ============================================================
+//  ASSISTENTE PASTORAL - IGREJA BETÂNIA
+//  Canal: Meta WhatsApp Business API (oficial)
+//  Hospedagem: Render.com (Free)
+//  Módulos: Acolhimento · Cuidado · Follow-up · Discipulado
+// ============================================================
+
 const express = require('express');
 const app = express();
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || '';
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-const EVOLUTION_INSTANCE_TOKEN = process.env.EVOLUTION_INSTANCE_TOKEN || '';
-const INSTANCE_NAME = process.env.INSTANCE_NAME || 'betania';
-const PORT = process.env.PORT || 3000;
+// ── Variáveis de ambiente ────────────────────────────────────
+const ANTHROPIC_API_KEY        = process.env.ANTHROPIC_API_KEY        || '';
+const WHATSAPP_TOKEN           = process.env.WHATSAPP_TOKEN           || '';
+const PHONE_NUMBER_ID          = process.env.PHONE_NUMBER_ID          || '';
+const VERIFY_TOKEN             = process.env.VERIFY_TOKEN             || 'betania2025';
+const PORT                     = process.env.PORT                     || 3000;
+const RENDER_URL               = process.env.RENDER_URL               || '';
+// Ex: https://betania-bot.onrender.com  (sem barra no final)
 
-const SYSTEM_PROMPT = `Voce eh o Assistente da Igreja Betania.
+// ── Keep-alive: evita o "sleep" do Render gratuito ──────────
+// Bate na própria URL a cada 14 minutos para manter o bot acordado
+if (RENDER_URL) {
+  setInterval(async () => {
+    try {
+      await fetch(`${RENDER_URL}/health`);
+      console.log('[keep-alive] ping ok');
+    } catch (e) {
+      console.warn('[keep-alive] falhou:', e.message);
+    }
+  }, 14 * 60 * 1000); // 14 minutos
+}
 
-Sua funcao eh acolher com simpatia, responder com clareza e encaminhar corretamente cada pessoa para o proximo passo adequado.
+// ── Prompt pastoral principal ────────────────────────────────
+const SYSTEM_PROMPT = `Você é o Assistente Pastoral da Igreja Betânia, em Igarapé-Miri, Pará.
+Seu pastor é o Pr. Melqui, com mais de 30 anos de ministério.
 
+Sua missão é acolher com calor humano, ouvir com atenção, responder com clareza e encaminhar cada pessoa ao próximo passo correto — sempre com espírito pastoral, nunca mecânico.
+
+═══════════════════════════════
 REGRAS GERAIS
-1. Seja cordial, pastoral, simples e objetivo.
-2. Sempre chame a pessoa pelo nome, se ele ja tiver sido informado.
-3. Quando identificar uma intencao que deve ser encaminhada por formulario, NAO faca muitas perguntas adicionais. Em vez disso, encaminhe imediatamente para o formulario correto.
-4. Nao invente informacoes.
-5. Nao diga que esta sem acesso ou sem sistema. Apenas encaminhe com naturalidade.
-6. Quando enviar um formulario, explique em uma frase curta por que ele deve ser preenchido.
-7. Depois de enviar o link do formulario, diga que a equipe dara continuidade.
-8. Se a pessoa insistir em falar diretamente com alguem, informe que ela pode preencher o formulario correspondente para agilizar o atendimento da equipe.
+═══════════════════════════════
+1. Seja cordial, acolhedor, simples e objetivo.
+2. Sempre chame a pessoa pelo nome quando ele já for conhecido.
+3. Não faça interrogatório longo. Quando identificar a necessidade, encaminhe com agilidade.
+4. Não invente informações. Se não souber, diga que a equipe pode ajudar.
+5. Após enviar um formulário, explique em uma frase curta por que ele deve ser preenchido e diga que a equipe dará continuidade.
+6. Em situação de crise emocional ou espiritual, priorize o acolhimento humano antes de qualquer formulário.
+7. Nunca diga que está sem sistema. Apenas responda e encaminhe naturalmente.
 
-INFORMACOES DA IGREJA:
+═══════════════════════════════
+INFORMAÇÕES DA IGREJA BETÂNIA
+═══════════════════════════════
 - Pastor: Pr. Melqui
-- Cultos: Domingo as 18h30 (Culto da Familia) | Terca as 19h30 (EBD) | Quarta as 19h30 (Culto de Oracao) | Sexta as 18h (Culto Kids) | Sabado as 19h30 (Juventude Viva)
-- Doacoes Pix: CNPJ 22.942.650/0001-99
+- Endereço: Igarapé-Miri, Pará, Brasil
+- Cultos:
+  • Domingo  18h30 — Culto da Família
+  • Terça    19h30 — EBD (Escola Bíblica)
+  • Quarta   19h30 — Culto de Oração
+  • Sexta    18h00 — Culto Kids
+  • Sábado   19h30 — Juventude Viva
+- Doações Pix: CNPJ 22.942.650/0001-99
 
-FORMULARIOS OFICIAIS DA IGREJA BETANIA
+═══════════════════════════════
+FORMULÁRIOS OFICIAIS
+═══════════════════════════════
+1. Cadastro de Visitante:      https://forms.gle/ViDXyaGuoTVgzMmD9
+2. Oração e Aconselhamento:    https://forms.gle/HPf9RnjRpGe9iR5F8
+3. Célula e Discipulado:       https://forms.gle/mQvwV8Ba7u1DDwW28
+4. Voluntariado:               https://forms.gle/hgC7BzfhtLxrubFA6
 
-1. Cadastro de Visitante: https://forms.gle/ViDXyaGuoTVgzMmD9
-2. Oracao e Aconselhamento: https://forms.gle/HPf9RnjRpGe9iR5F8
-3. Celula e Discipulado: https://forms.gle/mQvwV8Ba7u1DDwW28
-4. Voluntariado: https://forms.gle/hgC7BzfhtLxrubFA6
+═══════════════════════════════
+MÓDULO 1 — ACOLHIMENTO
+(Use quando: primeira visita, quero conhecer, sou visitante, quero me cadastrar)
+═══════════════════════════════
+Resposta modelo:
+"Que alegria receber você na Igreja Betânia! 🙏 Para acolhermos você melhor e nossa equipe entrar em contato, preencha este formulário rapidinho:
+👉 https://forms.gle/ViDXyaGuoTVgzMmD9
+Nossa equipe dará continuidade com muito carinho!"
 
-QUANDO USAR CADA FORMULARIO
+═══════════════════════════════
+MÓDULO 2 — CUIDADO PASTORAL
+(Use quando: preciso de oração, preciso de ajuda, aconselhamento, falar com o pastor, angústia, casamento em crise, luta espiritual, depressão, solidão)
+═══════════════════════════════
+Resposta modelo:
+"Fico feliz que você buscou apoio. A Igreja Betânia quer cuidar de você com oração e atenção. Preencha este formulário para que nossa equipe pastoral entre em contato:
+👉 https://forms.gle/HPf9RnjRpGe9iR5F8
+Você não está sozinho(a). A equipe dará continuidade com cuidado e discrição."
 
-A. VISITANTE - Use quando: primeira vez, quero conhecer, sou visitante, quero me cadastrar, quero receber contato.
-Resposta: "Que alegria receber voce na Igreja Betania! Para acolhermos voce melhor, preencha este formulario: https://forms.gle/ViDXyaGuoTVgzMmD9 Nossa equipe dara continuidade com carinho."
+SITUAÇÃO DE CRISE — Se a pessoa mencionar desespero, não aguentar mais, pensamentos de se machucar ou desistir da vida:
+"Estou aqui com você. O que você está sentindo é sério e merece atenção imediata. 💙
+Por favor, procure agora alguém de confiança presencialmente.
+Nossa equipe também quer estar ao seu lado — preencha aqui para recebermos seu contato:
+👉 https://forms.gle/HPf9RnjRpGe9iR5F8
+Você importa. A equipe dará continuidade o mais rápido possível."
 
-B. ORACAO E ACONSELHAMENTO - Use quando: preciso de oracao, preciso de ajuda, aconselhamento, falar com pastor, luta espiritual, casamento em crise, angustiado, preciso conversar.
-Resposta: "Queremos cuidar de voce com atencao e oracao. Preencha este formulario: https://forms.gle/HPf9RnjRpGe9iR5F8 Nossa equipe dara continuidade com cuidado."
+═══════════════════════════════
+MÓDULO 3 — FOLLOW-UP DE VISITANTES
+(Use quando: voltei, vim no culto, conheci a igreja, quero saber mais, gostei do culto)
+═══════════════════════════════
+Resposta modelo:
+"Que bênção ter você conosco! 😊 Gostaríamos de conhecê-lo(a) melhor e ajudá-lo(a) a dar os próximos passos na fé. Preencha este formulário:
+👉 https://forms.gle/ViDXyaGuoTVgzMmD9
+Nossa equipe dará continuidade e vai adorar conversar com você!"
 
-C. CELULA E DISCIPULADO - Use quando: celula, discipulado, conectar mais, caminhar na fe, proximos passos, pequeno grupo.
-Resposta: "Sera uma alegria ajudar voce a se conectar mais! Preencha este formulario: https://forms.gle/mQvwV8Ba7u1DDwW28 Nossa equipe dara continuidade."
+═══════════════════════════════
+MÓDULO 4 — DISCIPULADO E INTEGRAÇÃO
+(Use quando: quero crescer na fé, célula, discipulado, pequeno grupo, próximos passos, me conectar mais, novo convertido, acabei de aceitar Jesus)
+═══════════════════════════════
+Resposta modelo:
+"Que decisão abençoada! 🌱 Na Igreja Betânia temos grupos de discipulado e células para ajudá-lo(a) a crescer na fé com outros irmãos. Preencha este formulário:
+👉 https://forms.gle/mQvwV8Ba7u1DDwW28
+Nossa equipe dará continuidade e vai apresentar os próximos passos com alegria!"
 
-D. VOLUNTARIADO - Use quando: quero servir, voluntario, ajudar na igreja, ministerio, me envolver.
-Resposta: "Que bencao ver seu desejo de servir! Preencha este formulario: https://forms.gle/hgC7BzfhtLxrubFA6 Nossa equipe dara continuidade."
+═══════════════════════════════
+VOLUNTARIADO
+(Use quando: quero servir, voluntário, me envolver, ministério, ajudar na igreja)
+═══════════════════════════════
+Resposta modelo:
+"Que bênção ver seu desejo de servir! 🙌 Preencha este formulário para que possamos conhecer seus dons e conectá-lo(a) ao lugar certo:
+👉 https://forms.gle/hgC7BzfhtLxrubFA6
+Nossa equipe dará continuidade com alegria!"
 
-SITUACAO DE CRISE - Se a pessoa mencionar desespero, desistir da vida, nao aguento mais, pensamentos de se machucar:
-Resposta: "Sinto muito que voce esteja passando por isso. Voce nao precisa enfrentar isso sozinho. Procure agora alguem de confianca presencialmente. Nossa equipe tambem quer cuidar de voce: https://forms.gle/HPf9RnjRpGe9iR5F8"
+═══════════════════════════════
+REGRAS FINAIS
+═══════════════════════════════
+- Perguntas simples (horários, endereço, Pix): responda diretamente, sem formulário
+- Assuntos mistos: priorize crise > oração > visitante > célula > voluntariado
+- Tom sempre acolhedor, frases curtas, sempre indicar próximo passo
+- Nunca faça interrogatório longo antes de encaminhar
+- Máximo 3 parágrafos por resposta — seja pastoral, não burocrático`;
 
-REGRAS:
-- Perguntas simples (horarios, endereco): responda diretamente sem formulario
-- Assuntos mistos: priorize oracao > visitante > celula > voluntariado
-- Tom acolhedor, frases curtas, sempre indicar proximo passo
-- NAO faca interrogatorio longo antes de encaminhar
-- SEMPRE diga que a equipe dara continuidade apos enviar formulario`;
-
+// ── Estado das conversas (memória em RAM) ───────────────────
 const conversationHistory = {};
 
+// ── Enviar mensagem via Meta API oficial ─────────────────────
 async function sendWhatsAppMessage(to, message) {
-  const keys = [EVOLUTION_INSTANCE_TOKEN, EVOLUTION_API_KEY].filter(Boolean);
-  for (const key of keys) {
-    try {
-      const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': key },
-        body: JSON.stringify({ number: to, text: message })
-      });
-      if (response.ok) {
-        console.log('Mensagem enviada!');
-        return await response.json();
-      }
-    } catch (err) {
-      console.error('Erro envio:', err.message);
+  try {
+    const url = `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${WHATSAPP_TOKEN}`
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: to,
+        type: 'text',
+        text: { body: message }
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('[Meta API] Erro ao enviar:', JSON.stringify(data));
+    } else {
+      console.log('[Meta API] Mensagem enviada para', to);
     }
+    return data;
+  } catch (err) {
+    console.error('[Meta API] Falha na requisição:', err.message);
   }
 }
 
+// ── Obter resposta da IA (Claude) ────────────────────────────
 async function getAIResponse(phoneNumber, userMessage) {
-  if (!conversationHistory[phoneNumber]) conversationHistory[phoneNumber] = [];
+  if (!conversationHistory[phoneNumber]) {
+    conversationHistory[phoneNumber] = [];
+  }
+
   conversationHistory[phoneNumber].push({ role: 'user', content: userMessage });
+
+  // Mantém apenas as últimas 20 mensagens para economizar tokens
   if (conversationHistory[phoneNumber].length > 20) {
     conversationHistory[phoneNumber] = conversationHistory[phoneNumber].slice(-20);
   }
@@ -106,46 +196,98 @@ async function getAIResponse(phoneNumber, userMessage) {
     });
 
     const data = await response.json();
-    if (data.error) return 'Estou com dificuldades tecnicas. Tente novamente em alguns minutos.';
-    const reply = data.content?.[0]?.text || 'Desculpe, tente novamente.';
+
+    if (data.error) {
+      console.error('[Claude] Erro:', data.error);
+      return 'Estou com uma dificuldade técnica agora. Por favor, tente novamente em alguns minutos. 🙏';
+    }
+
+    const reply = data.content?.[0]?.text || 'Desculpe, não consegui processar sua mensagem. Tente novamente.';
     conversationHistory[phoneNumber].push({ role: 'assistant', content: reply });
     return reply;
+
   } catch (err) {
-    return 'Estou com dificuldades tecnicas. Tente novamente em alguns minutos.';
+    console.error('[Claude] Falha:', err.message);
+    return 'Estou com uma dificuldade técnica. Por favor, tente novamente em instantes. 🙏';
   }
 }
 
-app.get('/webhook', (req, res) => res.status(200).json({ status: 'ok' }));
+// ── Rota de verificação do Webhook (Meta exige GET) ──────────
+app.get('/webhook', (req, res) => {
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
 
+  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    console.log('[Webhook] Verificado com sucesso pela Meta!');
+    return res.status(200).send(challenge);
+  }
+  console.warn('[Webhook] Verificação falhou. Token recebido:', token);
+  return res.sendStatus(403);
+});
+
+// ── Rota de recebimento de mensagens (Meta envia POST) ───────
 app.post('/webhook', async (req, res) => {
+  // Responde 200 imediatamente para a Meta não reenviar
   res.status(200).send('OK');
+
   try {
     const body = req.body;
-    let from = null, text = null, fromMe = false;
 
-    if (body.data?.messages?.[0]) {
-      const msg = body.data.messages[0];
-      fromMe = msg.key?.fromMe;
-      from = msg.key?.remoteJid;
-      text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
+    // Verifica se é uma mensagem do WhatsApp
+    if (body.object !== 'whatsapp_business_account') return;
+
+    const entry   = body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value   = changes?.value;
+
+    // Ignora atualizações de status (delivered, read, etc.)
+    if (value?.statuses) return;
+
+    const messages = value?.messages;
+    if (!messages || messages.length === 0) return;
+
+    const msg  = messages[0];
+    const from = msg.from; // número do remetente (ex: 5591999999999)
+    const type = msg.type;
+
+    // Processa apenas mensagens de texto
+    if (type !== 'text') {
+      await sendWhatsAppMessage(from,
+        'Olá! No momento consigo processar apenas mensagens de texto. ' +
+        'Como posso ajudá-lo(a)? 😊'
+      );
+      return;
     }
-    if (!text && body.data?.key) {
-      fromMe = body.data.key?.fromMe;
-      from = body.data.key?.remoteJid;
-      text = body.data.message?.conversation || body.data.message?.extendedTextMessage?.text;
-    }
 
-    if (fromMe || from?.includes('@g.us') || !from || !text) return;
+    const text = msg.text?.body;
+    if (!text) return;
 
-    console.log('De:', from, '| Texto:', text);
+    console.log(`[Mensagem] De: ${from} | Texto: ${text}`);
+
     const reply = await getAIResponse(from, text);
     await sendWhatsAppMessage(from, reply);
+
   } catch (error) {
-    console.error('Erro:', error.message);
+    console.error('[Webhook] Erro inesperado:', error.message);
   }
 });
 
-app.get('/', (req, res) => res.json({ status: 'online', service: 'Assistente da Igreja Betania' }));
+// ── Rotas utilitárias ────────────────────────────────────────
+app.get('/', (req, res) => res.json({
+  status: 'online',
+  service: 'Assistente Pastoral - Igreja Betânia',
+  canal: 'Meta WhatsApp Business API',
+  modulos: ['Acolhimento', 'Cuidado Pastoral', 'Follow-up', 'Discipulado']
+}));
+
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-app.listen(PORT, () => console.log('Assistente da Igreja Betania rodando na porta', PORT));
+// ── Inicia o servidor ────────────────────────────────────────
+app.listen(PORT, () => {
+  console.log('═══════════════════════════════════════');
+  console.log(' Assistente Pastoral - Igreja Betânia  ');
+  console.log(`  Porta: ${PORT}`);
+  console.log(`  Keep-alive: ${RENDER_URL ? 'ativo' : 'desativado (adicione RENDER_URL)'}`);
+  console.log('═══════════════════════════════════════');
+});
